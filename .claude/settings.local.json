@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod +x /Users/n/code/kickstart/kickstart)",
+      "Bash(git -C /Users/n/code/kickstart status && git -C /Users/n/code/kickstart log --oneline)"
+    ]
+  }
+}

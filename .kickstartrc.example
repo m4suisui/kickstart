@@ -1,0 +1,7 @@
+# PROJECTS_DIR=~/code
+# EDITOR_CMD=code                    # VS Code (default)
+# EDITOR_CMD=cursor                  # Cursor
+# EDITOR_CMD=windsurf                # Windsurf
+# EDITOR_ARGS="--new-window"
+# CLAUDE_CMD=claude
+# ALWAYS_YOLO=false

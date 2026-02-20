@@ -1,0 +1,22 @@
+#!/bin/bash
+set -euo pipefail
+
+INSTALL_DIR="$HOME/bin"
+REPO_URL="https://raw.githubusercontent.com/m4suisui/kickstart/main/kickstart"
+
+mkdir -p "$INSTALL_DIR"
+curl -fsSL "$REPO_URL" -o "$INSTALL_DIR/kickstart"
+chmod +x "$INSTALL_DIR/kickstart"
+
+echo "✔ Installed to $INSTALL_DIR/kickstart"
+
+if ! echo ":$PATH:" | grep -q ":$INSTALL_DIR:"; then
+  case "$(basename "$SHELL")" in
+    zsh)  RCFILE=~/.zshrc ;;
+    bash) RCFILE=~/.bashrc ;;
+    *)    RCFILE=~/.profile ;;
+  esac
+  echo ""
+  echo "Add ~/bin to your PATH:"
+  echo "  echo 'export PATH=\"\$HOME/bin:\$PATH\"' >> $RCFILE && source $RCFILE"
+fi

@@ -1,0 +1,287 @@
+#!/bin/bash
+# kickstart - Chat → Claude Code bridge
+#
+# Usage:
+#   kickstart <project-name> [--remote] [--private] [--public] [--no-claude] [--yolo] [--dir=PATH]
+#
+# Copy your Chat output to clipboard, then run this script.
+# 1. Create local project directory & git init
+# 2. Write clipboard contents to CLAUDE.md
+# 3. Open editor (Antigravity)
+# 4. Auto-start Claude Code
+
+set -euo pipefail
+
+# ============================================================
+# Ensure common tool paths are available (for Shortcuts/launchers)
+# ============================================================
+export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$HOME/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+# ============================================================
+# Default settings
+# ============================================================
+EDITOR_CMD="code"
+EDITOR_ARGS="--new-window"
+PROJECTS_DIR="$HOME/code"
+CLAUDE_CMD="claude"
+ALWAYS_YOLO=false
+
+# Load ~/.kickstartrc if it exists
+RCFILE="$HOME/.kickstartrc"
+if [[ -f "$RCFILE" ]]; then
+  source "$RCFILE"
+fi
+
+# ============================================================
+# Colored output
+# ============================================================
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+step() { echo -e "${CYAN}▶ $1${NC}"; }
+done_msg() { echo -e "${GREEN}✔ $1${NC}"; }
+warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
+err() { echo -e "${RED}✖ $1${NC}" >&2; exit 1; }
+
+# ============================================================
+# Parse arguments
+# ============================================================
+PROJECT_NAME=""
+VISIBILITY=""
+CREATE_REMOTE=false
+RUN_CLAUDE=true
+YOLO_MODE=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --remote)    CREATE_REMOTE=true ;;
+    --private)   VISIBILITY="--private"; CREATE_REMOTE=true ;;
+    --public)    VISIBILITY="--public"; CREATE_REMOTE=true ;;
+    --no-claude) RUN_CLAUDE=false ;;
+    --yolo)      YOLO_MODE=true ;;
+    --dir=*)
+      PROJECTS_DIR="${arg#--dir=}"
+      [[ -z "$PROJECTS_DIR" ]] && err "--dir requires a non-empty path"
+      ;;
+    -h|--help)
+      echo "Usage: kickstart <project-name> [--remote] [--private] [--public] [--no-claude] [--yolo] [--dir=PATH]"
+      echo ""
+      echo "Copy your Claude Chat output to clipboard, then run this."
+      echo ""
+      echo "Options:"
+      echo "  --remote      Create a GitHub remote repository and push"
+      echo "  --private     Create as private repo (implies --remote)"
+      echo "  --public      Create as public repo (implies --remote)"
+      echo "  --no-claude   Skip Claude Code auto-start"
+      echo "  --yolo        Run Claude Code with --dangerously-skip-permissions"
+      echo "  --dir=PATH    Override project directory"
+      echo ""
+      echo "By default, only a local repository is created."
+      echo "Use --remote to also create a GitHub repository."
+      echo "When --remote is used without --public, the repo is private by default."
+      echo ""
+      echo "Config (~/.kickstartrc):"
+      echo "  PROJECTS_DIR   Project directory (default: ~/code)"
+      echo "  EDITOR_CMD     Editor executable path"
+      echo "  EDITOR_ARGS    Arguments passed to editor (default: --new-window)"
+      echo "  CLAUDE_CMD     Claude Code CLI command"
+      echo "  ALWAYS_YOLO    Always enable --yolo (default: false)"
+      exit 0
+      ;;
+    -*)         err "Unknown option: $arg" ;;
+    *)
+      [[ -n "$PROJECT_NAME" ]] && err "Too many arguments: '$PROJECT_NAME' and '$arg'"
+      PROJECT_NAME="$arg"
+      ;;
+  esac
+done
+
+# Apply ALWAYS_YOLO from config
+if $ALWAYS_YOLO; then
+  YOLO_MODE=true
+fi
+
+# Default visibility for --remote without explicit --public/--private
+if $CREATE_REMOTE && [[ -z "$VISIBILITY" ]]; then
+  VISIBILITY="--private"
+fi
+
+# Project name check
+if [[ -z "$PROJECT_NAME" ]]; then
+  echo -e "${CYAN}Project name:${NC}"
+  read -r PROJECT_NAME
+  [[ -z "$PROJECT_NAME" ]] && err "Project name is required"
+fi
+
+# Project name validation
+if [[ "$PROJECT_NAME" =~ \.\.  || "$PROJECT_NAME" =~ / || "$PROJECT_NAME" =~ ^- || "$PROJECT_NAME" == "." || "$PROJECT_NAME" =~ [[:space:]] ]]; then
+  err "Invalid project name: '$PROJECT_NAME' (must not contain '..', '/', spaces, or start with '-')"
+fi
+
+# ============================================================
+# Clipboard abstraction
+# ============================================================
+get_clipboard() {
+  if command -v pbpaste >/dev/null 2>&1; then
+    pbpaste
+  elif command -v xclip >/dev/null 2>&1; then
+    xclip -selection clipboard -o
+  elif command -v xsel >/dev/null 2>&1; then
+    xsel --clipboard --output
+  elif command -v wl-paste >/dev/null 2>&1; then
+    wl-paste
+  else
+    err "No clipboard tool found. Install pbpaste (macOS), xclip, xsel, or wl-paste (Linux)"
+  fi
+}
+
+# ============================================================
+# Prerequisites
+# ============================================================
+command -v git >/dev/null 2>&1 || err "git is required"
+
+if $CREATE_REMOTE; then
+  command -v gh >/dev/null 2>&1  || err "gh (GitHub CLI) is required for --remote: https://cli.github.com/"
+  gh auth status >/dev/null 2>&1 || err "gh is not authenticated. Run: gh auth login"
+fi
+
+# Get clipboard contents
+CLIPBOARD=$(get_clipboard 2>/dev/null || true)
+if [[ -z "$CLIPBOARD" ]]; then
+  warn "Clipboard is empty. CLAUDE.md will be created empty."
+  read -p "Continue? (y/N): " confirm
+  [[ "$confirm" != [yY] ]] && exit 0
+fi
+
+# ============================================================
+# Execute
+# ============================================================
+TARGET_DIR="$PROJECTS_DIR/$PROJECT_NAME"
+
+# 1. Prepare directory
+step "Creating project directory: $TARGET_DIR"
+mkdir -p "$PROJECTS_DIR"
+
+if [[ -d "$TARGET_DIR" ]]; then
+  err "$TARGET_DIR already exists"
+fi
+
+if $CREATE_REMOTE; then
+  # Create GitHub repo & clone
+  step "Creating GitHub repository ($VISIBILITY)"
+  cd "$PROJECTS_DIR"
+  GH_ERR=""
+  if ! GH_ERR=$(gh repo create "$PROJECT_NAME" $VISIBILITY --clone --add-readme 2>&1 >/dev/null); then
+    GH_ERR_FIRST="$GH_ERR"
+    if ! GH_ERR=$(gh repo create "$PROJECT_NAME" $VISIBILITY --clone 2>&1 >/dev/null); then
+      err "Failed to create repository: ${GH_ERR_FIRST}${GH_ERR:+ / $GH_ERR}"
+    fi
+  fi
+  cd "$TARGET_DIR" || err "Directory '$TARGET_DIR' not found. GitHub may have normalized the repo name."
+  done_msg "Repository created on GitHub"
+else
+  # Local only: mkdir + git init
+  mkdir -p "$TARGET_DIR"
+  cd "$TARGET_DIR"
+  git init --quiet
+  done_msg "Local repository initialized"
+fi
+
+# 2. Create CLAUDE.md
+step "Creating CLAUDE.md"
+cat > CLAUDE.md << 'HEADER'
+# Project Instructions for Claude
+
+HEADER
+
+if [[ -n "$CLIPBOARD" ]]; then
+  printf '%s\n' "$CLIPBOARD" >> CLAUDE.md
+fi
+
+done_msg "CLAUDE.md created ($(wc -l < CLAUDE.md | tr -d ' ') lines)"
+
+# 3. Create .vscode/tasks.json (auto-start Claude Code on editor open)
+if $RUN_CLAUDE; then
+  CLAUDE_FULL_PATH=$(command -v "$CLAUDE_CMD" 2>/dev/null || echo "$CLAUDE_CMD")
+  if $YOLO_MODE; then
+    warn "YOLO mode: Claude Code will run without permission checks"
+  fi
+  step "Creating .vscode/tasks.json (Claude Code auto-start)"
+  mkdir -p .vscode
+  # Build JSON safely to avoid quote/escape issues with file paths
+  ESCAPED_PATH=$(printf '%s' "$CLAUDE_FULL_PATH" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  if $YOLO_MODE; then
+    TASK_ARGS='["--dangerously-skip-permissions", "Start implementation"]'
+  else
+    TASK_ARGS='["Start implementation"]'
+  fi
+  cat > .vscode/tasks.json << TASKEOF
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Claude Code",
+      "type": "shell",
+      "command": "${ESCAPED_PATH}",
+      "args": ${TASK_ARGS},
+      "runOptions": { "runOn": "folderOpen" },
+      "presentation": { "reveal": "always", "panel": "new" },
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}
+TASKEOF
+  done_msg "tasks.json created"
+fi
+
+# 4. Create .gitignore (if not exists)
+if [[ ! -f .gitignore ]]; then
+  cat > .gitignore << 'EOF'
+node_modules/
+.env
+.env.local
+.DS_Store
+*.log
+dist/
+.next/
+EOF
+  done_msg ".gitignore created"
+fi
+
+# 5. Initial commit
+step "Initial commit"
+git add -A
+git commit -m "🚀 Project kickstart with CLAUDE.md" --quiet
+
+if $CREATE_REMOTE; then
+  if git push --quiet 2>/dev/null; then
+    done_msg "Committed & pushed"
+  else
+    warn "Committed locally, but push failed. Run 'git push' manually."
+  fi
+else
+  done_msg "Committed"
+fi
+
+# 6. Open editor in new window (Claude Code auto-starts via tasks.json)
+step "Opening editor ($EDITOR_CMD)"
+if command -v "$EDITOR_CMD" >/dev/null 2>&1; then
+  "$EDITOR_CMD" $EDITOR_ARGS . &
+  done_msg "Editor launched"
+else
+  warn "$EDITOR_CMD not found. Open manually: cd $TARGET_DIR"
+fi
+
+echo ""
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}  🚀 $PROJECT_NAME ready!${NC}"
+echo -e "${GREEN}  📁 $TARGET_DIR${NC}"
+echo -e "${GREEN}  📝 CLAUDE.md loaded${NC}"
+if $RUN_CLAUDE; then
+echo -e "${GREEN}  🤖 Claude Code auto-starting in editor terminal${NC}"
+fi
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
