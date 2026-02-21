@@ -22,7 +22,7 @@ export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$HOME/bin:/opt/homeb
 # ============================================================
 EDITOR_CMD="code"
 EDITOR_ARGS="--new-window"
-PROJECTS_DIR="$HOME/code"
+PROJECTS_DIR="$HOME/projects"
 CLAUDE_CMD="claude"
 ALWAYS_YOLO=false
 
@@ -84,7 +84,7 @@ for arg in "$@"; do
       echo "When --remote is used without --public, the repo is private by default."
       echo ""
       echo "Config (~/.kickstartrc):"
-      echo "  PROJECTS_DIR   Project directory (default: ~/code)"
+      echo "  PROJECTS_DIR   Project directory (default: ~/projects)"
       echo "  EDITOR_CMD     Editor executable path"
       echo "  EDITOR_ARGS    Arguments passed to editor (default: --new-window)"
       echo "  CLAUDE_CMD     Claude Code CLI command"

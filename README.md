@@ -79,7 +79,7 @@ kickstart --help
 Save defaults in `~/.kickstartrc`:
 
 ```bash
-PROJECTS_DIR=~/code                  # Where projects are created (default: ~/code)
+PROJECTS_DIR=~/projects              # Where projects are created (default: ~/projects)
 EDITOR_CMD=/path/to/your/editor      # Editor executable path
 EDITOR_ARGS="--new-window"           # Arguments passed to the editor (default: --new-window)
 CLAUDE_CMD=claude                    # Claude Code CLI command
