@@ -18,7 +18,7 @@ Running `kickstart <project-name>` will:
 
 With `--remote`, it also creates a GitHub repository and pushes.
 
-**Workflow:** Refine your project plan in Claude Chat → Copy instructions → `kickstart` → Claude Code starts with your instructions loaded
+**Workflow:** Refine your project plan in your favorite AI → Copy instructions → `kickstart` → Claude Code starts with your instructions loaded
 
 ## Requirements
 
@@ -68,7 +68,7 @@ kickstart --help
 
 ### Typical flow
 
-1. Design your project plan in Claude Chat
+1. Design your project plan in your favorite AI
 2. Copy the final instructions to clipboard
 3. Run `kickstart <project-name>` in the terminal
 4. Editor opens, Claude Code starts working with your `CLAUDE.md` instructions
