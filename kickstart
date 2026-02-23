@@ -16,6 +16,7 @@ set -euo pipefail
 # Ensure common tool paths are available (for Shortcuts/launchers)
 # ============================================================
 export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$HOME/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+export LANG="${LANG:-en_US.UTF-8}"
 
 # ============================================================
 # Default settings
