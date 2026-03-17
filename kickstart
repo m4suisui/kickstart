@@ -214,10 +214,20 @@ if $RUN_CLAUDE; then
   mkdir -p .vscode
   # Build JSON safely to avoid quote/escape issues with file paths
   ESCAPED_PATH=$(printf '%s' "$CLAUDE_FULL_PATH" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  # Create wrapper script to strip "Start implementation" after first run
+  cat > .vscode/start-claude.sh << 'WRAPEOF'
+#!/bin/sh
+TASKS=".vscode/tasks.json"
+if [ -f "$TASKS" ] && grep -q "Start implementation" "$TASKS"; then
+  sed -i.bak 's/, "Start implementation"//; s/"Start implementation"//' "$TASKS" && rm -f "$TASKS.bak"
+fi
+exec "$@"
+WRAPEOF
+  chmod +x .vscode/start-claude.sh
   if $YOLO_MODE; then
-    TASK_ARGS='["--dangerously-skip-permissions", "Start implementation"]'
+    TASK_ARGS='["'"${ESCAPED_PATH}"'", "--dangerously-skip-permissions", "Start implementation"]'
   else
-    TASK_ARGS='["Start implementation"]'
+    TASK_ARGS='["'"${ESCAPED_PATH}"'", "Start implementation"]'
   fi
   cat > .vscode/tasks.json << TASKEOF
 {
@@ -226,7 +236,7 @@ if $RUN_CLAUDE; then
     {
       "label": "Claude Code",
       "type": "shell",
-      "command": "${ESCAPED_PATH}",
+      "command": ".vscode/start-claude.sh",
       "args": ${TASK_ARGS},
       "runOptions": { "runOn": "folderOpen" },
       "presentation": { "reveal": "always", "panel": "new" },
