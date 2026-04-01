@@ -194,7 +194,14 @@ fi
 # 2. Create CLAUDE.md
 step "Creating CLAUDE.md"
 cat > CLAUDE.md << 'HEADER'
-# Project Instructions for Claude
+# Project Instructions
+
+Before starting implementation, reorganize this file:
+- Universal rules (build commands, constraints, tech stack) → keep in CLAUDE.md
+- Requirements, specs, and implementation steps → move to docs/requirements.md
+- Delete this instruction block once reorganization is complete.
+
+---
 
 HEADER
 
